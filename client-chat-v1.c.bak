@@ -1,0 +1,112 @@
+/*
+ * ============================================================
+ *  CHAT DISTRIBUIDO — Versión 1: Cliente
+ * ============================================================
+ *
+ *  Lo que hace este cliente:
+ *    - Se conecta al servidor en 127.0.0.1:8080
+ *    - Lee líneas desde el teclado (stdin)
+ *    - Envía cada línea al servidor
+ *    - Imprime la respuesta del servidor
+ *    - Termina cuando el usuario escribe "QUIT"
+ *
+ *  Compilar:  gcc -Wall -g -o client client-chat.c
+ *  Ejecutar:  ./client
+ *             ./client 192.168.1.5   (otra IP)
+ *
+ * ============================================================
+ */
+
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <unistd.h>
+#include <sys/socket.h>
+#include <netinet/in.h>
+#include <arpa/inet.h>
+
+#define PORT     8080
+#define BUF_SIZE 512
+
+int main(int argc, char *argv[]) {
+
+    const char *server_ip = (argc > 1) ? argv[1] : "127.0.0.1";
+
+    int sock_fd = socket(AF_INET, SOCK_STREAM, 0);
+    if (sock_fd < 0) { perror("socket"); return 1; }
+
+    struct sockaddr_in server_addr = {
+        .sin_family = AF_INET,
+        .sin_port   = htons(PORT)
+    };
+
+    if (inet_pton(AF_INET, server_ip, &server_addr.sin_addr) <= 0) {
+        fprintf(stderr, "IP inválida: %s\n", server_ip);
+        return 1;
+    }
+
+    if (connect(sock_fd, (struct sockaddr *)&server_addr,
+                sizeof(server_addr)) < 0) {
+        perror("connect");
+        fprintf(stderr, "¿Está corriendo ./server?\n");
+        return 1;
+    }
+
+    printf("Conectado a %s:%d\n", server_ip, PORT);
+    printf("Escribe mensajes (QUIT para salir):\n\n");
+
+    char input[BUF_SIZE];
+    char respuesta[BUF_SIZE];
+
+    while (1) {
+        printf("> ");
+        fflush(stdout); /* forzar que se muestre el prompt, es un clear */
+
+        /* Leer línea del teclado */
+        if (fgets(input, sizeof(input), stdin) == NULL) break; /* EOF */
+
+        /* Quitar '\n' final */
+        input[strcspn(input, "\n")] = '\0';
+
+        if (strlen(input) == 0) continue;  /* ignorar líneas vacías */
+
+        /* Enviar al servidor (añade '\n' como delimitador de mensaje) */
+        char to_send[BUF_SIZE + 2];
+        snprintf(to_send, sizeof(to_send), "%s\n", input);
+        send(sock_fd, to_send, strlen(to_send), 0); /* send: envía datos al servidor */
+
+
+
+        /* Seccion a probar: */
+        /* Probar invirtiendo el orden de los caracteres */
+        for (int i = 0; i < strlen(to_send) / 2; i++) {
+            char temp = to_send[i];
+            to_send[i] = to_send[strlen(to_send) - 1 - i];
+            to_send[strlen(to_send) - 1 - i] = temp;
+        }
+        printf("Mensaje invertido: %s\n", to_send);
+
+        /* Recibir respuesta del servidor */
+        int n = recv(sock_fd, respuesta, sizeof(respuesta) - 1, 0); /* recv: recibe datos del servidor */
+        if (n <= 0) { printf("Servidor cerró la conexión.\n"); break; }
+        respuesta[n] = '\0';
+        printf("%s", respuesta);
+
+        if (strcmp(input, "QUIT") == 0) break;
+    }
+
+    close(sock_fd);
+    printf("Desconectado.\n");
+    return 0;
+}
+
+
+
+/* A implementar: 
+
+- Suplantacion de identidad: Un client envía JOIN Alice siendo Bob -> todos los demás clientes creen que es Alice.
+- Replay attack: Se captura un paquete JOIN admin válido y se reenvía para suplantar la identidad de admin.
+- Sniffing: El trafico TCP biaja en texto plano, por lo que un atacante puede leerlo y obtener información sensible.
+- Mensaje malicioso: Un cliente envía un mensaje con contenido malicioso, por ejemplo, 50.000 bytes de datos, el sevidor hace recv(buf, 1024) pero no valida el tamaño del mensaje, por lo que se produce un buffer overflow y el servidor se cae.
+
+*/
