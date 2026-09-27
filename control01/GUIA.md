@@ -2,7 +2,10 @@
 
 > Objetivo: que puedas escribir `servidor.c` y `sonda.c` **solo, en 45 minutos y sin errores**.
 > Todo sale de lo visto en clase: `ejemploPipe.c`, el chat v1 (`*-v1.c.bak`) y el chat v2 (`server-chat.c`, `client-chat.c`).
-> La solución completa y probada está en [servidor.c](servidor.c) y [sonda.c](sonda.c).
+> **Cómo usar esta carpeta:**
+> - [servidor.c](servidor.c) y [sonda.c](sonda.c) son el **esqueleto original del control**, para que lo resuelvas tú.
+> - [solucionario/](solucionario/) tiene la solución completa y probada ([servidor.c](solucionario/servidor.c), [sonda.c](solucionario/sonda.c)) y su explicación paso a paso ([EXPLICACION.md](solucionario/EXPLICACION.md)).
+> - Esta guía tiene la **teoría** y las **pistas**, pero no la solución.
 
 ---
 
@@ -209,7 +212,7 @@ while (waitpid(-1, NULL, WNOHANG) > 0);
 
 ---
 
-## 5. El control resuelto, paso a paso
+## 5. Cómo abordar el control
 
 ### Paso previo: leer el protocolo como un contrato
 
@@ -239,214 +242,33 @@ Sirve para detectar si el dato se corrompió en el camino: la sonda lo calcula y
 
 ---
 
-### PARTE A: Servidor
+### Pistas por TODO (sin código: inténtalo tú primero)
 
-#### TODO A.1: conexión inicial (15 pts)
+**A.1: conexión inicial (15 pts)**
+- `recv` → `buf[n] = '\0'` → quitar el `\n`.
+- `sscanf(buf, "CONNECT %7s", id)` y revisar que devuelva `1`.
+- Recorrer `umbrales[]` con `strcmp` y **guardar un puntero** `Umbral *u` a la sonda encontrada (te va a servir en A.2).
+- Si no se encontró → `REJECT <id>\n` y `return`. Si se encontró → `HELLO <id>\n`.
 
-Qué hay que hacer: recibir `CONNECT`, ver si el id existe en `umbrales[]` y responder `HELLO` o `REJECT`.
+**A.2: loop + `evaluar()` (25 pts)**
+- `evaluar(u, valor)` va **fuera** de `handle_sonda`, arriba de ella. Devuelve `"NORMAL"`, `"ALERTA"` o `"CRITICO"`.
+- Revisa **CRÍTICO antes que ALERTA** y usa `u->mayor` para decidir si comparas con `>` o con `<`.
+- En el `while (1)`: `recv` (si `n <= 0`, `break`) → `sscanf` de los 4 campos, con el **valor como string**.
+- Recalcula el checksum sobre ese string y compáralo con `strcmp`. Si no coincide → `NACK` y `continue`.
+- Si está bien → `atof` → `evaluar` → `ACK`, y además `ALERT` si el nivel no es NORMAL.
 
-```c
-int n = recv(fd, buf, sizeof(buf) - 1, 0);
-if (n <= 0) return;
-buf[n] = '\0';
-buf[strcspn(buf, "\r\n")] = '\0';
+**A.3: `main` (15 pts)**
+- Receta S-B-L-A, y luego `while (1)` con `accept` → `fork`.
+- Hijo: `close(server_fd)` → `handle_sonda` → `close(client_fd)` → **`exit(0)`**.
+- Padre: `close(client_fd)` → `while (waitpid(-1, NULL, WNOHANG) > 0);`
 
-char id[8];
-if (sscanf(buf, "CONNECT %7s", id) != 1) {      // no era un CONNECT válido
-    send(fd, "REJECT ?\n", 9, 0);
-    return;
-}
+**B.1: conectar (15 pts)**: receta S-I-C, usando `ip` en vez de `"127.0.0.1"`.
 
-Umbral *u = NULL;                                // puntero a "mi" umbral
-for (int i = 0; i < 4; i++) {
-    if (strcmp(id, umbrales[i].id) == 0) { u = &umbrales[i]; break; }
-}
+**B.2: CONNECT (12 pts)**: `snprintf` + `send` del `CONNECT <id>\n` → `recv` → la primera palabra con `sscanf(buf, "%15s", tipo)`. Si no es `HELLO`: imprimir, `close` y `return 1`.
 
-char resp[BUF_SIZE];
-if (u == NULL) {                                 // no está en la tabla
-    snprintf(resp, sizeof(resp), "REJECT %s\n", id);
-    send(fd, resp, strlen(resp), 0);
-    return;                                      // se termina la atención
-}
-snprintf(resp, sizeof(resp), "HELLO %s\n", id);
-send(fd, resp, strlen(resp), 0);
-```
+**B.3: 8 lecturas (18 pts)**: `for (seq = 1; seq <= 8; seq++)`. Dentro: valor a texto con `"%.2f"` → `checksum` de **ese** texto → `TELEM ...\n` → `send` → `recv` + `printf` → cambiar `valor` → `sleep(1)`. Al final, `close(sock)`.
 
-Idea clave: guardar **`u`** (un puntero al umbral de esta sonda). Así en A.2 no hay que volver a buscar: `u->alerta`, `u->critico` y `u->mayor` ya están a mano.
-
-> `->` se usa con punteros a struct: `u->alerta` es lo mismo que `(*u).alerta`.
-
-#### TODO A.2: loop de telemetría + `evaluar()` (25 pts)
-
-Primero la función `evaluar`, **fuera** de `handle_sonda` (arriba de ella):
-
-```c
-const char *evaluar(const Umbral *u, float valor) {
-    if (u->mayor) {                       // ARES-1,2,3: el peligro es que SUBA
-        if (valor > u->critico) return "CRITICO";
-        if (valor > u->alerta)  return "ALERTA";
-    } else {                              // ARES-4: el peligro es que BAJE
-        if (valor < u->critico) return "CRITICO";
-        if (valor < u->alerta)  return "ALERTA";
-    }
-    return "NORMAL";
-}
-```
-
-**¿Por qué se revisa CRÍTICO primero?** Con ARES-2, un valor de 7.0 es `> 3.5` (alerta) y también `> 6.0` (crítico). Si revisas la alerta primero, devuelves "ALERTA" y nunca llegas a "CRITICO". Siempre hay que revisar **del caso más grave al menos grave**.
-
-**¿Para qué es el campo `mayor`?** Para no escribir un `if` distinto por cada sonda. La energía (ARES-4) es peligrosa cuando **baja**, así que se invierte la comparación. Un solo `if (u->mayor)` cubre las 4 sondas.
-
-Ahora el loop:
-
-```c
-while (1) {
-    n = recv(fd, buf, sizeof(buf) - 1, 0);
-    if (n <= 0) break;                           // la sonda terminó
-    buf[n] = '\0';
-    buf[strcspn(buf, "\r\n")] = '\0';
-
-    char t_id[8], valor_str[32], cs_rec[3], cs_calc[3];
-    int seq;
-
-    if (sscanf(buf, "TELEM %7s %d %31s %2s", t_id, &seq, valor_str, cs_rec) != 4) {
-        snprintf(resp, sizeof(resp), "NACK %s 0\n", id);
-        send(fd, resp, strlen(resp), 0);
-        continue;                                // siguiente mensaje
-    }
-
-    checksum(valor_str, cs_calc);                // recalcular
-    if (strcmp(cs_rec, cs_calc) != 0 || strcmp(t_id, id) != 0) {
-        snprintf(resp, sizeof(resp), "NACK %s %d\n", id, seq);
-        send(fd, resp, strlen(resp), 0);
-        continue;
-    }
-
-    float valor = atof(valor_str);               // recién ahora a número
-    const char *nivel = evaluar(u, valor);
-
-    int len = snprintf(resp, sizeof(resp), "ACK %s %d\n", id, seq);
-    if (strcmp(nivel, "NORMAL") != 0) {
-        float limite = (strcmp(nivel, "CRITICO") == 0) ? u->critico : u->alerta;
-        snprintf(resp + len, sizeof(resp) - len,
-                 "ALERT %s %s valor=%.2f umbral=%.2f\n", id, nivel, valor, limite);
-    }
-    send(fd, resp, strlen(resp), 0);
-}
-```
-
-Detalles que suman puntos:
-- **`continue`** después de un `NACK`: salta el resto y vuelve a esperar el siguiente mensaje. Un dato corrupto no se evalúa.
-- **`strcmp(t_id, id) != 0`**: si la sonda se conectó como ARES-1 pero manda `TELEM ARES-2 ...`, se rechaza. Es la "suplantación de identidad" que aparece en la lista de `client-chat.c`.
-- **ACK + ALERT en un solo `send`**: `snprintf` devuelve cuántos caracteres escribió (`len`), y el segundo `snprintf` escribe **a continuación** (`resp + len`). Así la sonda recibe las dos líneas en un solo `recv` y no quedan desfasadas. Si en el control haces dos `send` separados, también se acepta: es lo que la mayoría esperaría.
-- `(cond) ? a : b` es un if en una línea: "si es CRITICO usa `u->critico`, si no `u->alerta`".
-
-#### TODO A.3: `main` con concurrencia (15 pts)
-
-Es la receta del servidor más el `fork`:
-
-```c
-int server_fd = socket(AF_INET, SOCK_STREAM, 0);
-if (server_fd < 0) { perror("socket"); return 1; }
-
-int opt = 1;
-setsockopt(server_fd, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt));
-
-struct sockaddr_in addr = {
-    .sin_family = AF_INET, .sin_port = htons(PORT), .sin_addr.s_addr = INADDR_ANY
-};
-if (bind(server_fd, (struct sockaddr *)&addr, sizeof(addr)) < 0) { perror("bind"); return 1; }
-if (listen(server_fd, 10) < 0) { perror("listen"); return 1; }
-
-while (1) {
-    int client_fd = accept(server_fd, NULL, NULL);
-    if (client_fd < 0) { perror("accept"); continue; }
-
-    pid_t pid = fork();
-    if (pid < 0) { perror("fork"); close(client_fd); continue; }
-
-    if (pid == 0) {                 // HIJO
-        close(server_fd);
-        handle_sonda(client_fd);
-        close(client_fd);
-        exit(0);                    // ¡IMPORTANTE!
-    }
-    close(client_fd);               // PADRE
-    while (waitpid(-1, NULL, WNOHANG) > 0);
-}
-```
-
-⚠️ **El `exit(0)` del hijo es obligatorio.** Sin él, cuando el hijo termina `handle_sonda` sigue ejecutando el `while` y **también se pone a hacer `accept`**: terminas con procesos clonándose sin control.
-
----
-
-### PARTE B: Cliente (sonda)
-
-#### TODO B.1: socket + connect (15 pts)
-
-Es la receta del cliente. La única diferencia con clase es que la IP viene en `ip` (`argv[2]`):
-
-```c
-int sock = socket(AF_INET, SOCK_STREAM, 0);
-if (sock < 0) { perror("socket"); return 1; }
-
-struct sockaddr_in srv = { .sin_family = AF_INET, .sin_port = htons(PORT) };
-if (inet_pton(AF_INET, ip, &srv.sin_addr) <= 0) {
-    fprintf(stderr, "IP inválida\n"); return 1;
-}
-if (connect(sock, (struct sockaddr *)&srv, sizeof(srv)) < 0) {
-    perror("connect"); return 1;
-}
-```
-
-#### TODO B.2: CONNECT y respuesta (12 pts)
-
-```c
-char buf[BUF_SIZE];
-snprintf(buf, sizeof(buf), "CONNECT %s\n", id);
-send(sock, buf, strlen(buf), 0);
-
-int n = recv(sock, buf, sizeof(buf) - 1, 0);
-if (n <= 0) { printf("Servidor cerró\n"); close(sock); return 1; }
-buf[n] = '\0';
-
-char tipo[16];
-sscanf(buf, "%15s", tipo);              // primera palabra
-if (strcmp(tipo, "HELLO") != 0) {       // fue REJECT (u otra cosa)
-    printf("Rechazada: %s", buf);
-    close(sock);
-    return 1;
-}
-printf("Conectado: %s", buf);
-```
-
-Aquí se reutiliza `buf` para enviar y para recibir, y no hay problema porque se usan en momentos distintos.
-
-#### TODO B.3: 8 lecturas (18 pts)
-
-```c
-for (int seq = 1; seq <= 8; seq++) {
-    char valor_str[32], cs[3];
-    snprintf(valor_str, sizeof(valor_str), "%.2f", valor);  // 1) float -> texto
-    checksum(valor_str, cs);                                 // 2) cs del MISMO texto
-
-    snprintf(buf, sizeof(buf), "TELEM %s %d %s %s\n", id, seq, valor_str, cs);
-    send(sock, buf, strlen(buf), 0);                         // 3) enviar
-
-    n = recv(sock, buf, sizeof(buf) - 1, 0);                 // 4) respuesta
-    if (n <= 0) break;
-    buf[n] = '\0';
-    printf("%s", buf);                                       // 5) imprimir
-
-    valor += ((rand() % 201) - 100) / 100.0f;                // 6) variar
-    sleep(1);                                                // 7) esperar
-}
-close(sock);
-```
-
-- **"El valor varía en cada iteración"**: cualquier variación sirve. La más simple para el control es `valor += 1.5;`. La de arriba suma un número aleatorio entre −1.00 y +1.00: `rand() % 201` da de 0 a 200, al restar 100 queda entre −100 y 100, y al dividir por 100.0 queda entre −1.00 y 1.00. Hay que dividir por `100.0f` y no por `100`, porque `int / int` descarta los decimales.
-- `srand(getpid())` antes del `for` hace que cada sonda tenga números aleatorios distintos.
-- El `for` va de **1 a 8 inclusive** (`seq <= 8`), porque el enunciado dice "seq 1–8".
+> Cuando termines (o te quedes pegado más de 10 minutos en un TODO), compara con [solucionario/EXPLICACION.md](solucionario/EXPLICACION.md).
 
 ---
 
