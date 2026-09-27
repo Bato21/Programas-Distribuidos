@@ -31,6 +31,11 @@ Umbral umbrales[] = {
     {"ARES-4",  30,  15, 0},
 };
 
+/* >>> SIGUIENTE PASO: escribir aqui la funcion evaluar(Umbral *u, float valor)
+ *     que devuelva "NORMAL", "ALERTA" o "CRITICO".
+ *     Partir solo con el caso mayor == 1 (revisar CRITICO antes que ALERTA).
+ *     Probar con ARES-1: -50.00, -35.00 y -25.00. */
+
 void handle_sonda(int fd) {
     char buf[BUF_SIZE];
 
@@ -105,6 +110,73 @@ void handle_sonda(int fd) {
     
 
     /* TODO A.2 */
+
+    // La sonda empieza a mandar lecturas TELEM ARES-1 1 -35.50 C4 en bucle
+    while (1) {
+        // Recibimos el mensaje de la sonda
+        n = recv(fd, buf, sizeof(buf) -1, 0);
+
+        // Si el mensaje esta corrupto o vacío cortamos la conexión
+        if (n <= 0) {
+            printf("ERROR: Conexión cortada\n");
+            break;
+        }
+
+        // Agregamos el terminador al final del mensaje que recibimos
+        buf[n] = '\0';
+        buf[strcspn(buf, "\r\n")] = '\0';
+        printf("Telemetría recibida: [%s]\n", buf);
+
+        // Preparamos el mensaje para leerlo
+        // Creamos las variables que vamos a recibir
+        char idtelem[8];
+        int seq;
+        char valor[10];
+        char cs[3];
+
+        // Rellenamos las variables con los valores del texto tomando en cuenta EXACTAMENTE como llegan
+        campos = sscanf(buf, "TELEM %7s %d %9s %2s", idtelem, &seq, valor, cs);
+
+        // Si no recuperamos la cantidad necesaria de campos mandamos error y cerramos conexión
+        if (campos != 4) {
+            printf("ERROR: No se pudo recuperar la telemetría\n");
+            continue;
+        }
+
+        printf("Campos: %d id: %s seq: %d valor: %s cs: %s\n", campos, idtelem, seq, valor, cs);
+
+        // Checkeamos con el checksum
+        char check[3];
+        checksum(valor, check);
+        printf("Valor recibido: %2s\nValor calculado: %2s\n", cs, check);
+
+        // Verificamos que los resultados sean igual
+        // Si no lo son mandamos el mensaje correspondiente
+        if (strcmp(check, cs) != 0 || strcmp(idtelem,id) != 0){
+            printf("ERROR: Telemetría corrupta\n");
+            snprintf(resp, sizeof(resp), "NACK %s %d\n", id, seq);
+            send(fd, resp, strlen(resp), 0);
+            continue;
+        }
+
+        // Si es válido se envía el mensaje correspondiente
+        printf("Telemetría válida\n");
+        snprintf(resp, sizeof(resp), "ACK %s %d\n", id, seq);
+
+        // Hacemos la comparación para el envío de alertas
+        float valorf = atof(valor);
+        printf("Valor a comparar: %.2f\n", valorf);
+        /* >>> SIGUIENTE PASO: printf("Nivel: %s\n", evaluar(u, valorf)); */
+        send(fd, resp, strlen(resp), 0);
+
+
+
+
+
+
+
+    }
+
 
 }
 
