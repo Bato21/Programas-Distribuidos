@@ -221,25 +221,68 @@ int main(void) {
 
     /* TODO A.3 */
 
-    /* ===== ANDAMIO TEMPORAL (solo para probar A.1 y A.2) =====
-     * Acepta UNA conexion, llama a handle_sonda y termina.
-     * En A.3 borras todo este bloque y lo escribes tu, con fork. */
+
+    // Creamos el punto de conexión para las sondas (socket) definiendo:
+    // Formato de las direcciones (127.0.0.1 por ejemplo), como se va a hacer la conexión (TCP en este caso), protocolo (0 para usar por defecto)
+    // socket devuelve un numero que es basicamente la direccion del enchufe
     int server_fd = socket(AF_INET, SOCK_STREAM, 0);
-    int opt = 1;
-    setsockopt(server_fd, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt));
+
+    // Si este numero es negativo significa error
+    if (server_fd < 0){
+        // Perror devuelve el error y su descripción
+        perror("socket");
+        return 1;
+    }
+
+    printf("server_fd = %d\n", server_fd);
+
+    // OBLIGATORIO Y NO CAMBIA
     struct sockaddr_in addr = {
-        .sin_family      = AF_INET,
-        .sin_port        = htons(PORT),
-        .sin_addr.s_addr = INADDR_ANY
+        .sin_family = AF_INET, // Mismo del socket
+        .sin_port = htons(PORT), // puerto 7070
+        .sin_addr.s_addr = INADDR_ANY // Acepta conexiones por cualquier red del PC
     };
-    bind(server_fd, (struct sockaddr *)&addr, sizeof(addr));
-    listen(server_fd, 10);
-    printf("[andamio] esperando conexion en puerto %d...\n", PORT);
-    int client_fd = accept(server_fd, NULL, NULL);
-    handle_sonda(client_fd);
-    close(client_fd);
+
+
+    // Le asignamos un puerto al socket definiendo:
+    // Socket que vamos a bindear, la dirección con & para saber dónde está (NO CAMBIA), tamaño de la dirección (NO CAMBIA)
+    int result = bind(server_fd, (struct sockaddr *)&addr, sizeof(addr));
+
+    if (result < 0){
+        perror("bind");
+        return 1;
+    }
+    
+    printf("resultado bind = %d\n", result);
+
+    // Si todo sale bien, dejamos al servidor escuchando solicitudes, con un limite de solicitudes que pueden quedar esperando (10)
+    if (listen(server_fd, 10) < 0){
+        perror("listen");
+        return 1;
+    }
+
+    // Bucle donde iremos aceptando a los clientes
+    while (1){
+        // Si llega un cliente le abrimos una 'linea' de comunicación, no guardamos su dirección por eso NULL y NULL (NO CAMBIA)
+        int client_fd = accept(server_fd, NULL, NULL);
+
+        if (client_fd < 0){
+            perror("accept");
+            return 1;
+        }
+
+        printf("Resultado accept = %d\n", client_fd);
+
+
+
+        handle_sonda(client_fd);
+
+        // Cerramos el canal con el cliente
+        close(client_fd);
+    }
+
+    // Cerramos el servidor
     close(server_fd);
-    /* ===== FIN ANDAMIO ===== */
 
     return 0;
 }
