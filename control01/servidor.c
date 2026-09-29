@@ -31,10 +31,42 @@ Umbral umbrales[] = {
     {"ARES-4",  30,  15, 0},
 };
 
-/* >>> SIGUIENTE PASO: escribir aqui la funcion evaluar(Umbral *u, float valor)
- *     que devuelva "NORMAL", "ALERTA" o "CRITICO".
- *     Partir solo con el caso mayor == 1 (revisar CRITICO antes que ALERTA).
- *     Probar con ARES-1: -50.00, -35.00 y -25.00. */
+ const char* evaluar(Umbral *u, float valorf){
+    // Si es la sonda 1, 2 o 3 usamos mayor a 
+
+    if (u->mayor == 1) {
+        if (valorf > u->critico){
+            return "CRITICO";
+        }
+
+        else if (valorf > u->alerta){
+            return "ALERTA";
+        }
+
+        else{
+            return "NORMAL";
+        }
+    }
+
+    else if (u->mayor == 0){
+        if (valorf < u->critico){
+            return "CRITICO";
+        }
+
+        else if (valorf < u->alerta){
+            return "ALERTA";
+        }
+
+        else{
+            return "NORMAL";
+        }
+    }
+
+    else {
+        return "ERROR: No se puedo realizar la evaluación";
+    }
+    
+ }
 
 void handle_sonda(int fd) {
     char buf[BUF_SIZE];
@@ -150,30 +182,35 @@ void handle_sonda(int fd) {
         checksum(valor, check);
         printf("Valor recibido: %2s\nValor calculado: %2s\n", cs, check);
 
-        // Verificamos que los resultados sean igual
+        // Verificamos que los resultados sean igual y que venga de la sonda correcta
         // Si no lo son mandamos el mensaje correspondiente
         if (strcmp(check, cs) != 0 || strcmp(idtelem,id) != 0){
             printf("ERROR: Telemetría corrupta\n");
             snprintf(resp, sizeof(resp), "NACK %s %d\n", id, seq);
             send(fd, resp, strlen(resp), 0);
+            // Continue para permitir que siga mandando telemetría, sino sería break
             continue;
         }
 
         // Si es válido se envía el mensaje correspondiente
         printf("Telemetría válida\n");
         snprintf(resp, sizeof(resp), "ACK %s %d\n", id, seq);
+        send(fd, resp, strlen(resp), 0);
 
         // Hacemos la comparación para el envío de alertas
         float valorf = atof(valor);
         printf("Valor a comparar: %.2f\n", valorf);
-        /* >>> SIGUIENTE PASO: printf("Nivel: %s\n", evaluar(u, valorf)); */
-        send(fd, resp, strlen(resp), 0);
+        
+        // Comparamos el valor y guardamos su resultado en una variable 
+        const char *nivel = evaluar(u, valorf);
+        printf("Nivel: %s\n", nivel);
 
-
-
-
-
-
+        // Si el resultado no es NORMAL mandamos la alerta correspondiente
+        if (strcmp(nivel, "NORMAL") != 0) {
+            snprintf(resp, sizeof(resp), "ALERT %s %s el valor enviado es de: %.2f\n", idtelem, nivel, valorf);
+            send(fd, resp, strlen(resp), 0);
+            continue;
+        }
 
     }
 
