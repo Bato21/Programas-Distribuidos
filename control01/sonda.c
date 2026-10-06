@@ -6,6 +6,9 @@
 #include <netinet/in.h>
 #include <arpa/inet.h>
 
+// Librería de tiempo para la aleatoriedad
+#include <time.h>
+
 #define PORT     7070
 #define BUF_SIZE 256
 
@@ -102,18 +105,48 @@ int main(int argc, char *argv[]) {
     }
 
 
-
-
-
-
-
-    
-
-    
-
-
-
     /* TODO B.3 */
+    // Bucle de telemetría
 
+    for (int seq = 1; seq < 9; seq++){
+
+        // Mensaje a enviar 
+        char env[BUF_SIZE]; 
+
+        // Variable cs
+        char cs[3];
+
+        // Variable del valor en texto
+        char valor_txt[32];
+        // Le asignamos el valor a la variable
+        snprintf(valor_txt, sizeof(valor_txt),"%.2f", valor);
+        // Calculamos checksum con la nueva variable
+        checksum(valor_txt, cs);
+
+        snprintf(env, sizeof(env), "TELEM %s %d %s %s\n", id, seq, valor_txt, cs);
+        printf("Enviamos: %sCon id: %s seq: %d valor: %.2f cs: %s\n\n", env, id, seq, valor, cs);
+
+        // Mandamos las lecturas
+        send(sock, env, strlen(env), 0);
+
+        // Recibimos el mensaje de vuelta
+        n = recv(sock, resp, sizeof(resp) - 1, 0);
+        if (n <= 0){
+            printf("ERROR: No se recibió respuesta del servidor\n");
+            break;
+        }
+
+        //Limpiamos el mensaje recibido
+        resp[n] = '\0';
+        printf("Respuesta: %s\n\n", resp);
+
+        // Cambiamos el valor enviado
+        valor += 5;
+
+        //Agregamos el sleep al final
+        sleep(1);
+    }
+
+    close(sock);
     return 0;
 }

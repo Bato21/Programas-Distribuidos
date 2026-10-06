@@ -195,7 +195,6 @@ void handle_sonda(int fd) {
         // Si es válido se envía el mensaje correspondiente
         printf("Telemetría válida\n");
         snprintf(resp, sizeof(resp), "ACK %s %d\n", id, seq);
-        send(fd, resp, strlen(resp), 0);
 
         // Hacemos la comparación para el envío de alertas
         float valorf = atof(valor);
@@ -207,10 +206,10 @@ void handle_sonda(int fd) {
 
         // Si el resultado no es NORMAL mandamos la alerta correspondiente
         if (strcmp(nivel, "NORMAL") != 0) {
-            snprintf(resp, sizeof(resp), "ALERT %s %s el valor enviado es de: %.2f\n", idtelem, nivel, valorf);
-            send(fd, resp, strlen(resp), 0);
-            continue;
+            snprintf(resp + strlen(resp), sizeof(resp) - strlen(resp), "ALERT %s %s el valor enviado es de: %.2f\n", idtelem, nivel, valorf);
         }
+
+        send(fd, resp, strlen(resp), 0);
 
     }
 
