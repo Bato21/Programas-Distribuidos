@@ -273,12 +273,30 @@ int main(void) {
 
         printf("Resultado accept = %d\n", client_fd);
 
+        pid_t pid = fork();
 
+        if (pid < 0){
+            perror("fork");
+            return 1;
+        }
 
-        handle_sonda(client_fd);
+        else if (pid == 0){
+            printf("Escribiendo desde el hijo\n");
+            close(server_fd);
+            handle_sonda(client_fd);
+            // Cuando termina de gestionar la sonda se elimina al hijo
+            close(client_fd);
+            exit(0);
+        }
+
+        else if (pid > 0){
+            printf("Escribiendo desde el padre\n");
+            while (waitpid(-1, NULL, WNOHANG) > 0);
+        }
 
         // Cerramos el canal con el cliente
         close(client_fd);
+
     }
 
     // Cerramos el servidor
