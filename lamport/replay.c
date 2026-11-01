@@ -16,8 +16,11 @@ LogEntry log_[] = {
 
 void replay(int *clock, LogEntry *log, int n) {
   /* Itera el log aplicando Lamport.
-     Imprime "evento N: C=valor" por cada entrada. */
+  Imprime "evento N: C=valor" por cada entrada. */
   /* TODO */
+  for (int i = 0; i < n; i++){
+    printf("Evento %d: C=%d", i, clock);  
+  }
 }
 
 int main(void) {
