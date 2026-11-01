@@ -15,11 +15,29 @@ LogEntry log_[] = {
 #define N (sizeof(log_)/sizeof(log_[0]))
 
 void replay(int *clock, LogEntry *log, int n) {
-  /* Itera el log aplicando Lamport.
-  Imprime "evento N: C=valor" por cada entrada. */
-  /* TODO */
-  for (int i = 0; i < n; i++){
-    printf("Evento %d: C=%d", i, clock);  
+  // Recorremos el arreglo log
+  for (int i = 0; i < n; i++){  
+    // Si el evento es RECV
+    if (log[i].ts_recv > 0){
+      // Si el reloj local es más grande
+      if (log[i].ts_recv < *clock){
+        (*clock)++;
+      }
+      
+      // Si no o el local es más chico o son iguales
+      else{
+        *clock = log[i].ts_recv + 1;
+      }
+    }
+
+    // Si es LOCAL o SEND
+    else {
+      // Sumamos 1 al reloj
+      (*clock)++;
+    }
+
+    // Imprimimos el evento
+    printf("Evento %d: C=%d\n", i+1, *clock);
   }
 }
 
