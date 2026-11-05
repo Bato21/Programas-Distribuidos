@@ -1,0 +1,5 @@
+P0 ts=7 escribe
+P1 ts=11 escribe
+P2 ts=14 escribe
+P0 ts=19 escribe
+P1 ts=23 escribe
