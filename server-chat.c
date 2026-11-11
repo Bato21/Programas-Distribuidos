@@ -63,9 +63,7 @@ int main(void) {
         .sin_addr.s_addr = INADDR_ANY    /* aceptar de cualquier IP */
     };
 
-    if (bind(server_fd, (struct sockaddr *)&addr, sizeof(addr)) < 0) {
-        perror("bind"); return 1;
-    }
+    if (bind(server_fd, (struct sockaddr *)&addr, sizeof(addr)) < 0) {perror("bind"); return 1; }
 
     if (listen(server_fd, MAX_CLIENTS) < 0) { perror("listen"); return 1; }
 
@@ -157,25 +155,33 @@ int main(void) {
     struct mensaje m;
     char salida[BUF_SIZE + 64];
     int activos = MAX_CLIENTS;
+    char respuesta[BUF_SIZE + 64];
+    char id[BUF_SIZE];
+    int reloj = 0;
+    int T;
 
     while (read(pipe_fd[0], &m, sizeof(m)) == sizeof(m)) {
-
         if (m.desconecta) {
             printf("[SERVER] Cliente %d se desconectó.\n", m.origen + 1);
-            snprintf(salida, sizeof(salida), "*** Cliente %d salió del chat ***\n", m.origen + 1);
+            reloj++;
+            snprintf(respuesta, sizeof(respuesta), "[T=%d] %d: salió del chat\n", reloj, m.origen + 1);
             close(clients[m.origen]);
             clients[m.origen] = -1;   /* -1 = ranura libre */
             activos--;
         } else {
-            printf("[SERVER] Cliente %d: \"%s\"\n", m.origen + 1, m.texto);
-            snprintf(salida, sizeof(salida), "Cliente %d: %s\n", m.origen + 1, m.texto);
-        }
+            sscanf(m.texto, "[T=%d] %31[^:]: %[^\n]", &T, id, salida);
+            if (T > reloj) reloj = T + 1; // Lógica de recepción del reloj
+            else reloj++;
+            printf("[SERVER] [T=%d] Cliente %s dice: %s\n", reloj, id, salida);
+            reloj++; // Incrementamos el reloj antes de enviar
+            snprintf(respuesta, sizeof(respuesta), "[T=%d] %s: %s\n", reloj, id, salida);
+        }  
 
         /* broadcast: a todos menos al que lo escribió */
         for (int j = 0; j < MAX_CLIENTS; j++) {
             if (clients[j] < 0)  continue;   /* ya se fue */
             if (j == m.origen)   continue;   /* no le devolvemos su propio mensaje */
-            send(clients[j], salida, strlen(salida), 0);
+            send(clients[j], respuesta, strlen(respuesta), 0);
         }
 
         if (activos == 0) break;

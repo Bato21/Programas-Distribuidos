@@ -18,8 +18,8 @@
  *  proceso usa una dirección.
  *
  *  Compilar:  gcc -Wall -Wextra -g -o client client-chat.c
- *  Ejecutar:  ./client
- *             ./client 192.168.1.5   (otra IP)
+ *  Ejecutar:  ./client Camila
+ *             ./client Camila 192.168.1.5   (otra IP)
  *
  * ============================================================
  */
@@ -28,8 +28,8 @@
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
-#include <signal.h>
-#include <sys/wait.h>
+#include <time.h>
+#include <sys/select.h>
 #include <sys/socket.h>
 #include <netinet/in.h>
 #include <arpa/inet.h>
@@ -37,9 +37,18 @@
 #define PORT     8080
 #define BUF_SIZE 512
 
+// Reloj del proceso
+int reloj = 0;
+
 int main(int argc, char *argv[]) {
 
-    const char *server_ip = (argc > 1) ? argv[1] : "127.0.0.1";
+    /* argv[0] = "./client", argv[1] = nombre, argv[2] = IP (opcional) */
+    if (argc < 2) {
+        fprintf(stderr, "Uso: %s <nombre> [ip]\n", argv[0]);
+        return 1;
+    }
+    const char *nombre    = argv[1];
+    const char *server_ip = (argc > 2) ? argv[2] : "127.0.0.1";
 
     int sock_fd = socket(AF_INET, SOCK_STREAM, 0);
     if (sock_fd < 0) { perror("socket"); return 1; }
@@ -60,57 +69,65 @@ int main(int argc, char *argv[]) {
         fprintf(stderr, "¿Está corriendo ./server?\n");
         return 1;
     }
-
-    printf("Conectado a %s:%d\n", server_ip, PORT);
+    
+    printf("Conectado a %s:%d como %s\n", server_ip, PORT, nombre);
     printf("Escribe mensajes (QUIT para salir).\n");
     printf("El chat arranca cuando se conecten todos los clientes.\n\n");
 
     fflush(stdout);   /* vaciar el buffer antes de fork(), si no sale duplicado */
 
-    pid_t pid = fork();
-    if (pid == -1) { perror("fork"); return 1; }
+    // Variable para almacenar mensaje
+    char buf[BUF_SIZE];
+    // File descriptor del teclado
+    int teclado_fd = 0;
 
-    if (pid == 0) {
-        /* ===== HIJO: teclado -> socket ===== */
-        char input[BUF_SIZE];
-
-        while (fgets(input, sizeof(input), stdin) != NULL) {
-
-            input[strcspn(input, "\n")] = '\0';   /* quitar '\n' final */
-            if (strlen(input) == 0) continue;     /* ignorar líneas vacías */
-
-            /* el '\n' hace de delimitador de mensaje para el servidor */
-            char to_send[BUF_SIZE + 2];
-            snprintf(to_send, sizeof(to_send), "%s\n", input);
-
-            if (send(sock_fd, to_send, strlen(to_send), 0) < 0) {
-                perror("send");
+    // Bucle para enviar o recibir mensajes
+    while(1){
+        fd_set set;
+        FD_ZERO(&set);
+        FD_SET(sock_fd, &set);
+        FD_SET(teclado_fd, &set);
+        // Hasta donde revisa el select
+        int max_fd = (sock_fd > teclado_fd ? sock_fd : teclado_fd);
+        // Si hay que esperar
+        // struct timeval tv = {1, 0};
+        // Esperamos que llegue algo sin timeout por consulta
+        select(max_fd + 1, &set, NULL, NULL, NULL);
+        // Si llega un mensaje
+        if(FD_ISSET(sock_fd, &set)){
+            char respuesta[BUF_SIZE];
+            char mensaje[BUF_SIZE];
+            char id[BUF_SIZE];
+            int T;
+            int n = recv(sock_fd, respuesta, sizeof(respuesta) - 1, 0);
+            if (n <= 0){ 
+                printf("\nServidor cerró la conexión\n"); 
                 break;
             }
-
-            if (strcmp(input, "QUIT") == 0) break;
+            respuesta[n] = '\0';
+            sscanf(respuesta, "[T=%d] %31[^:]: %[^\n]", &T, id, mensaje);
+            if (T > reloj) reloj = T + 1;
+            else reloj++;
+            printf("[T=%d] %s: %s\n", T, id, mensaje);
+            fflush(stdout);
         }
 
-        exit(0);   /* el padre se encarga de cerrar el socket */
-    }
-
-    /* ===== PADRE: socket -> pantalla ===== */
-    char respuesta[BUF_SIZE];
-
-    while (1) {
-        int n = recv(sock_fd, respuesta, sizeof(respuesta) - 1, 0);
-        if (n <= 0) {
-            printf("\nServidor cerró la conexión.\n");
-            break;
+        // Si llega algo del teclado
+        if(FD_ISSET(teclado_fd, &set)){
+            if( fgets(buf, sizeof(buf), stdin) == NULL) break;
+            buf[strcspn(buf, "\n")] = '\0'; // Sacamos el \n del final
+            // Usuario escribe QUIT para salir
+            if (strcmp(buf, "QUIT") == 0) break;
+            // Ignoramos un mensaje vacío
+            if (strlen(buf) == 0) continue;
+            // Mensaje a mandar
+            char to_send[BUF_SIZE + 64];
+            reloj++;
+            snprintf(to_send, sizeof(to_send), "[T=%d] %s: %s\n", reloj, nombre, buf);
+            // Si falla el send
+            if (send(sock_fd, to_send, strlen(to_send), 0) < 0){perror("send"); break;}
         }
-        respuesta[n] = '\0';   /* recv tampoco pone el '\0' */
-        printf("%s", respuesta);
-        fflush(stdout);
     }
-
-    /* el hijo puede estar bloqueado en fgets() esperando teclado: lo cortamos */
-    kill(pid, SIGTERM);
-    waitpid(pid, NULL, 0);
 
     close(sock_fd);
     printf("Desconectado.\n");
