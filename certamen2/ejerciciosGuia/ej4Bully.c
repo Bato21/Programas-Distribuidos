@@ -9,24 +9,27 @@
 #define UPT_MAX 500
 #define UPT_MIN 50
 
-typedef enum { ACTIVO, CAIDO } Estado;
-typedef enum { ELECTION, OK, COORDINATOR } TipoMsg;
-typedef struct { int id; double cpu, lat, uptime, aptitud; Estado estado; } Nodo;
-typedef struct { TipoMsg tipo; int origen, destino; } Mensaje;
+#define ACTIVO 1
+#define CAIDO 0
 
-int enviar(Nodo red[], Mensaje m);   /* imprime y devuelve 1 si el destino está ACTIVO */
+typedef struct Nodo {
+    int id;
+    double cpu;
+    double lat;
+    double uptime;
+    int estado;
+    double aptitud;
+} Nodo;
 
 
 Nodo nodos[N + 1] = {
-    {0, 0, 0, 0, CAIDO},
-    {1, 70, 40, 120, ACTIVO},
-    {2, 55, 15, 300, ACTIVO},
-    {3, 90, 80, 50, ACTIVO},
-    {4, 40, 25, 500, ACTIVO},
-    {5, 80, 30, 200, CAIDO},
+    {0, 0, 0, 0, CAIDO, 0},
+    {1, 70, 40, 120, ACTIVO, 0},
+    {2, 55, 15, 300, ACTIVO, 0},
+    {3, 90, 80, 50, ACTIVO, 0},
+    {4, 40, 25, 500, ACTIVO, 0},
+    {5, 80, 30, 200, CAIDO, 0},
 };
-
-int apt[N + 1];
 
 double normalizar(double x, double max, double min){ return ((x - min) / (max - min)); }
 
@@ -61,7 +64,7 @@ int main(void){
     qsort(orden + 1, N, sizeof(int), cmp);            /* +1: saltamos el índice 0 */
 
     for (int k = 1; k <= N; k++)
-        printf("N%d: %.4f\n", orden[k]);
+        printf("N%d: %.4f\n", orden[k], nodos[orden[k]].aptitud);
 
 
 

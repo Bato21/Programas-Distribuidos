@@ -19,7 +19,7 @@
 > | 1 | CENTINELA (el control) | Bully | nada: el control tal cual, de memoria |
 > | 2 | CENTINELA | Anillo | otro algoritmo |
 > | 3 | CENTINELA | Raft | otro algoritmo + mayoría |
-> | 4 | Servidores | Bully clásico | criterio inverso, normalización, `struct`/`enum` |
+> | 4 | Servidores | Bully clásico | criterio inverso, normalización, conteo de mensajes |
 > | 5 | Boyas | Anillo | 2 criterios inversos + heartbeat por ciclos |
 > | 6 | Servidores | Bully y Anillo | un nodo cae **durante** la elección |
 > | 7 | Servidores | Raft | dos candidatos a la vez (votos divididos) |
@@ -81,7 +81,7 @@ Mismo escenario y misma `F`, pero con **Raft**.
 
 ---
 
-## Ejercicio 4 — Servidores: Bully clásico con structs (`ej4_servidores_bully.c`)
+## Ejercicio 4 — Servidores: Bully clásico (`ej4_servidores_bully.c`)
 
 ### Briefing
 Un clúster de **5 servidores** (N1–N5) replica una base de datos. El líder **N5** deja de responder. Lo detecta **N4**.
@@ -107,15 +107,7 @@ Ordena con `qsort`. La normalización usa los 5 nodos, N5 incluido, porque la te
 ### 2. Elección: Bully clásico
 Esta vez **sin `break`**: el iniciador manda ELECTION a **todos** los más aptos, y **cada** nodo que responde OK inicia su propia elección (una sola vez por nodo).
 
-**Representación obligatoria:**
-```c
-typedef enum { ACTIVO, CAIDO } Estado;
-typedef enum { ELECTION, OK, COORDINATOR } TipoMsg;
-typedef struct { int id; double cpu, lat, uptime, aptitud; Estado estado; } Nodo;
-typedef struct { TipoMsg tipo; int origen, destino; } Mensaje;
-
-int enviar(Nodo red[], Mensaje m);   /* imprime y devuelve 1 si el destino está ACTIVO */
-```
+**Representación:** la misma del control, sin complicarse. Un `struct` simple con los datos, `estado` y `apt`, `#define ACTIVO 1` / `#define CAIDO 0`, y un `printf` por mensaje (`[N4 -> N5] ELECTION`). Lleva tres contadores globales: `n_election`, `n_ok`, `n_coord`.
 
 ### Resultado esperado
 ```
@@ -159,10 +151,7 @@ int hb[] = {1, 1, 0, 1, 0, 0, 0};   /* 1 = llegó el HB de B5 en ese ciclo */
 - Lleva un contador de fallos seguidos que se reinicia al llegar un HB.
 - Al llegar a 3 fallos: `══ B5 INOPERATIVA — INICIAR ELECCIÓN ══` y se deja de recorrer.
 
-**Elección:** Anillo B1 → B2 → B3 → B4 → B5 → B6 → B1, iniciado por B1. El mensaje lleva la **lista de todos los que lo vieron**:
-```c
-typedef struct { TipoMsg tipo; int lista[6]; int n; } MsgAnillo;
-```
+**Elección:** Anillo B1 → B2 → B3 → B4 → B5 → B6 → B1, iniciado por B1. El mensaje lleva la **lista de todos los que lo vieron**: basta un arreglo `int lista[N]` y un contador `int n`.
 Al volver a B1, este elige al más apto de la lista y da la vuelta de COORDINATOR.
 
 ### Salida esperada (detección)

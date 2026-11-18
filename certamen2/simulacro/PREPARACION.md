@@ -26,7 +26,7 @@ Si te falta tiempo: **Ej 1 → Simulacro → Ej 1 otra vez**. El certamen va a s
 
 **Esqueleto que se repite en todos**
 - [ ] `#define N`, arreglos `vivo[N + 1]` y `apt[N + 1]` (índice 0 sin usar), o un arreglo de `struct Nodo`.
-- [ ] `typedef enum` para los tipos de mensaje y `typedef struct` para nodo y mensaje.
+- [ ] Un `struct` simple para el nodo (datos, `estado`, `apt`) y `#define` para los estados. Sin enums ni struct de mensaje.
 - [ ] Una función que imprima un mensaje: `printf("[C%d -> C%d] %s\n", origen, destino, nombre)`.
 - [ ] `printf("Nuevo líder: C%d\n", lider);` al final.
 
