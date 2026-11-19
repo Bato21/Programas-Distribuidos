@@ -57,7 +57,7 @@ En la latencia, **un menor valor indica mayor aptitud**.
   int  recibir(char *buf, int timeout_ms);     /* 1 si llegó algo, 0 si venció el timeout */
   ```
   Para el timeout use `setsockopt(... SO_RCVTIMEO ...)`: si `recv` devuelve `-1`, venció el tiempo.
-- **f)** Todo mensaje mide exactamente `TAM = 64` bytes: se envía siempre con `send(fd, buf, TAM, 0)` y se recibe con `recv(fd, buf, TAM, MSG_WAITALL)`. TCP es un flujo de bytes, así que sin tamaño fijo dos mensajes seguidos pueden llegar pegados en un solo `recv`.
+- **f)** Todo mensaje se envía con el buffer **completo**, igual que el `write(pipe, &m, sizeof(m))` del chat: `send(fd, buf, sizeof(buf), 0)` y `recv(fd, buf, sizeof(buf), 0)`, con el mismo tamaño de buffer en los dos programas. TCP es un flujo de bytes, así que con `strlen` dos mensajes seguidos pueden llegar pegados en un solo `recv`.
 - **g)** Los mensajes son **texto** con este formato (`term` = term del emisor, `id` = id del emisor). El faro le antepone el destino al enviarlo, y el servidor se lo quita al reenviarlo:
 
   | Mensaje | Formato | Quién lo envía |
@@ -130,8 +130,9 @@ srvaddr.sin_addr.s_addr = inet_addr("127.0.0.1");
 connect(s, (struct sockaddr *)&srvaddr, sizeof(srvaddr));
 
 /* --- Ambos --- */
-send(s, buf, TAM, 0);
-int n = recv(s, buf, TAM, MSG_WAITALL);          /* 0 = el otro cerró, -1 = timeout */
+char buf[BUF_SIZE] = {0};
+send(s, buf, sizeof(buf), 0);
+int n = recv(s, buf, sizeof(buf), 0);           /* 0 = el otro cerró, -1 = timeout */
 
 struct timeval tv = { ms / 1000, (ms % 1000) * 1000 };
 setsockopt(s, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof tv);
